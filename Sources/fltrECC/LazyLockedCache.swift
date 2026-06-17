@@ -2,7 +2,7 @@
 //
 // This source file is part of the fltrECC open source project
 //
-// Copyright (c) 2022 fltrWallet AG and the fltrECC project authors
+// Copyright (c) 2022-2026 fltrWallet AG and the fltrECC project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.md for license information
@@ -10,33 +10,34 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-import Darwin
+import Synchronization
 
+/// A reference-typed, thread-safe memoization cell shared by value copies of a
+/// secret key. Backed by `Synchronization.Mutex`, it is portable across every
+/// platform Swift 6 supports (Darwin, Linux, Android, Windows) — replacing the
+/// previous Darwin-only `os_unfair_lock`.
+///
+/// The cached value is always a pure function of the immutable scalar that owns
+/// the cache, so sharing a single cell across struct copies is benign and the
+/// type is safely `Sendable`.
 @usableFromInline
-internal final class LazyLockedCache<T> {
+internal final class LazyLockedCache<T: Sendable>: Sendable {
     @usableFromInline
-    var lock = os_unfair_lock()
+    let storage: Mutex<T?> = .init(nil)
+
     @usableFromInline
-    var value: Optional<T> = .none
-    
     init() {}
-    
+
     @usableFromInline
     func cache(_ fn: () throws -> T) rethrows -> T {
-        let exists: T? = {
-            os_unfair_lock_lock(&self.lock)
-            defer { os_unfair_lock_unlock(&self.lock) }
-            return self.value
-        }()
-        
-        if let value = exists {
-            return value
-        } else {
-            let newValue = try fn()
-            
-            os_unfair_lock_lock(&self.lock)
-            self.value = newValue
-            os_unfair_lock_unlock(&self.lock)
+        if let existing = self.storage.withLock({ $0 }) {
+            return existing
+        }
+
+        let newValue = try fn()
+        return self.storage.withLock { box in
+            if let raced = box { return raced }  // another thread populated it first
+            box = newValue
             return newValue
         }
     }

@@ -2,7 +2,7 @@
 //
 // This source file is part of the fltrECC open source project
 //
-// Copyright (c) 2022 fltrWallet AG and the fltrECC project authors
+// Copyright (c) 2022-2026 fltrWallet AG and the fltrECC project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.md for license information
@@ -14,15 +14,15 @@
 import fltrECCAdapter
 
 public extension X {
-    struct PublicKey {
+    struct PublicKey: Sendable {
         @usableFromInline
         let _data: [UInt8]
-        
+
         @usableFromInline
         internal init(_data: [UInt8]) {
             self._data = _data
         }
-        
+
         @inlinable
         public init?(from serialized: [UInt8]) {
             guard let data = try? C.deSerialize(xPoint: serialized)
@@ -42,7 +42,7 @@ public extension X {
             let (_, xPoint) = C.xPoint(from: point._data)
             self.init(_data: xPoint)
         }
-        
+
         @inlinable
         public func tweak(add scalar: Scalar) -> DSA.PublicKey? {
             do {
@@ -55,34 +55,36 @@ public extension X {
 
         @inlinable
         public func check(base point: X.PublicKey, tweak: [UInt8], negated: Bool) -> Bool {
-            guard let _ = Scalar(tweak)
+            guard Scalar(tweak) != nil
             else { return false }
-            
-            return C.checkAddXTweak(tweaked: self.serialize(),
-                                    negated: negated,
-                                    xPoint: point._data,
-                                    tweak: tweak)
+
+            return C.checkAddXTweak(
+                tweaked: self.serialize(),
+                negated: negated,
+                xPoint: point._data,
+                tweak: tweak)
         }
-        
+
         @inlinable
         public func dsa() -> DSA.PublicKey {
-            let serialized = [ 0x02 ] + self.serialize()
+            let serialized = [0x02] + self.serialize()
             return .init(from: serialized)!
         }
-        
+
         @inlinable
         public func serialize() -> [UInt8] {
             C.serialize(xPoint: self._data)
         }
-        
+
         @inlinable
         public func verify(signature: X.Signature, message: [UInt8]) -> Bool {
             guard message.count == 32
             else { return false }
-            
-            return C.verify(schnorr: signature._data,
-                            xPoint: self._data,
-                            message: message)
+
+            return C.verify(
+                schnorr: signature._data,
+                xPoint: self._data,
+                message: message)
         }
     }
 }
@@ -95,7 +97,7 @@ extension X.PublicKey: Comparable, Equatable, Hashable {
         case .equals, .greaterThan: return false
         }
     }
-    
+
     @inlinable
     public static func == (lhs: X.PublicKey, rhs: X.PublicKey) -> Bool {
         C.compareXPoints(lhs._data, rhs._data).equals

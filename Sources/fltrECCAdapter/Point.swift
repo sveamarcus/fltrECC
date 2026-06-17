@@ -2,7 +2,7 @@
 //
 // This source file is part of the fltrECC open source project
 //
-// Copyright (c) 2022 fltrWallet AG and the fltrECC project authors
+// Copyright (c) 2022-2026 fltrWallet AG and the fltrECC project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.md for license information
@@ -10,26 +10,26 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-public struct Point {
+public struct Point: Sendable {
     public let _data: [UInt8]
-    
+
     @usableFromInline
     init(_data: [UInt8]) {
         self._data = _data
     }
-    
+
     @inlinable
     public init(_ scalar: Scalar) {
         self.init(_data: try! C.point(from: scalar))
     }
-    
+
     @inlinable
     public init?(from serialized: [UInt8]) {
         guard let data = try? C.deSerialize(point: serialized)
         else { return nil }
         self.init(_data: data)
     }
-    
+
     @usableFromInline
     func tryOperation(scalar: Scalar, _ fn: (inout [UInt8], Scalar) throws -> Void) -> Self? {
         do {
@@ -40,34 +40,34 @@ public struct Point {
             return nil
         }
     }
-    
+
     @inlinable
     public func negated() -> Self {
         var copy = self._data
         C.negate(into: &copy)
         return Self.init(_data: copy)
     }
-    
+
     @inlinable
     public func add(_ scalar: Scalar) -> Self? {
         tryOperation(scalar: scalar, C.add)
     }
-    
+
     @inlinable
     public func combine(_ p1: Self, _ ps: Self...) -> Self? {
         do {
-            let result = try C.combine(points: [ [ self._data, p1._data ], ps.map(\._data) ].joined())
+            let result = try C.combine(points: [[self._data, p1._data], ps.map(\._data)].joined())
             return .init(_data: result)
         } catch {
             return nil
         }
     }
-    
+
     @inlinable
     public func add(_ point: Self) -> Self? {
         self.combine(point)
     }
-    
+
     @inlinable
     public func mul(_ scalar: Scalar) -> Self {
         var copy = self._data
@@ -84,9 +84,9 @@ extension Point: Equatable {
         case .lessThan, .greaterThan: return false
         }
     }
-    
+
     @inlinable
-    public static func ==(lhs: Self, rhs: Self) -> Bool {
+    public static func == (lhs: Self, rhs: Self) -> Bool {
         self.equalsDSAPoints(lhs: lhs._data, rhs: rhs._data)
     }
 }
@@ -99,9 +99,9 @@ extension Point: Comparable {
         case .equals, .greaterThan: return false
         }
     }
-    
+
     @inlinable
-    public static func <(lhs: Self, rhs: Self) -> Bool {
+    public static func < (lhs: Self, rhs: Self) -> Bool {
         self.lessThanDSAPoints(lhs: lhs._data, rhs: rhs._data)
     }
 }

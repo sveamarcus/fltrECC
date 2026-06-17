@@ -3,5 +3,6 @@
 /.swiftpm
 /Packages
 /*.xcodeproj
+/.swift-version
 xcuserdata/
 

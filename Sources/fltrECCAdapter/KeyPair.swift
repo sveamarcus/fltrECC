@@ -2,7 +2,7 @@
 //
 // This source file is part of the fltrECC open source project
 //
-// Copyright (c) 2022 fltrWallet AG and the fltrECC project authors
+// Copyright (c) 2022-2026 fltrWallet AG and the fltrECC project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.md for license information
@@ -24,11 +24,14 @@ public struct KeyPair: SecretBytes, SecretMutableBytes, Equatable {
     public init?(_ buffer: Buffer) {
         guard buffer.count == C.KEYPAIR_SIZE
         else { return nil }
-        
+
         let keyPair = Self.init(_buffer: buffer)
-        guard let _ = C.scalar(from: keyPair)
+        guard C.scalar(from: keyPair) != nil
         else { return nil }
-        
+
         self = keyPair
     }
 }
+
+// See `Buffer.swift` for the copy-before-mutate invariant backing `@unchecked`.
+extension KeyPair: @unchecked Sendable {}

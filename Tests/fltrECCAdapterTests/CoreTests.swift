@@ -1,444 +1,380 @@
+import Testing
+import fltrECCTesting
+
 //===----------------------------------------------------------------------===//
 //
 // This source file is part of the fltrECC open source project
 //
-// Copyright (c) 2022 fltrWallet AG and the fltrECC project authors
+// Copyright (c) 2022-2026 fltrWallet AG and the fltrECC project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.md for license information
-// See CONTRIBUTORS.txt for the list of SwiftNIO project authors
 //
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
 @testable import fltrECCAdapter
-import fltrECCTesting
-import XCTest
 
-class CoreTests: XCTestCase {
-    override func setUp() {
-        self.scalarZero = Scalar(unsafeUninitializedCapacity: 32) { a, s in
-            (0..<32).forEach { a[$0] = UInt8(1) }
-            s = 32
+@Suite struct CoreTests {
+    // A fresh suite instance is created per test, so these can be immutable `let`
+    // properties initialized once — no `setUp`/`tearDown` needed.
+    let scalarZero: Scalar
+    let scalarOutOfOrder: Scalar
+
+    init() {
+        // `Scalar(unsafeUninitializedCapacity:)` validates on construction, so
+        // start from valid `1`-bytes and overwrite through the unchecked mutable
+        // path to reach the deliberately-invalid test values (all-zero / all-255).
+        let zero = Scalar(unsafeUninitializedCapacity: 32) { buffer, size in
+            (0..<32).forEach { buffer[$0] = 1 }
+            size = 32
         }
-        self.scalarZero.withUnsafeMutableBytes { scalar in
-            (0..<32).forEach { scalar[$0] = UInt8(0) }
+        zero.withUnsafeMutableBytes { scalar in
+            (0..<32).forEach { scalar[$0] = 0 }
         }
-        
-        self.scalarOutOfOrder = Scalar(unsafeUninitializedCapacity: 32) { a, s in
-            (0..<32).forEach { a[$0] = UInt8(1) }
-            s = 32
+        self.scalarZero = zero
+
+        let outOfOrder = Scalar(unsafeUninitializedCapacity: 32) { buffer, size in
+            (0..<32).forEach { buffer[$0] = 1 }
+            size = 32
         }
-        self.scalarOutOfOrder.withUnsafeMutableBytes { scalar in
-            (0..<32).forEach { scalar[$0] = UInt8(255) }
+        outOfOrder.withUnsafeMutableBytes { scalar in
+            (0..<32).forEach { scalar[$0] = 255 }
         }
+        self.scalarOutOfOrder = outOfOrder
     }
-    
-    override func tearDown() {
-        self.scalarZero = nil
-        self.scalarOutOfOrder = nil
-    }
-    
-    private var scalarZero: Scalar!
-    private var scalarOutOfOrder: Scalar!
-    
+
     // MARK: Scalar
-    func testScalarOneValid() {
-        XCTAssertTrue(C.scalarIsValid(scalar: 1))
+    @Test func scalarOneValid() {
+        #expect(C.scalarIsValid(scalar: 1))
     }
-    
-    func testScalarInvalid() {
-        XCTAssertFalse(C.scalarIsValid(scalar: self.scalarZero))
-        XCTAssertFalse(C.scalarIsValid(scalar: self.scalarOutOfOrder))
+
+    @Test func scalarInvalid() {
+        #expect(!C.scalarIsValid(scalar: self.scalarZero))
+        #expect(!C.scalarIsValid(scalar: self.scalarOutOfOrder))
     }
-    
-    func testNegate() {
+
+    @Test func negate() {
         let one = Scalar(1)
         let alsoOne = Scalar(1)
         C.negate(into: one)
-        XCTAssertNotEqual(one, alsoOne)
+        #expect(one != alsoOne)
         C.negate(into: one)
-        XCTAssertEqual(one, alsoOne)
+        #expect(one == alsoOne)
     }
-    
-    func testAddOne() {
+
+    @Test func addOne() throws {
         let one = Scalar(1)
         let alsoOne = Scalar(1)
-        XCTAssertNoThrow(try C.add(into: one, scalar: alsoOne))
-        XCTAssertEqual(one, 2)
+        try C.add(into: one, scalar: alsoOne)
+        #expect(one == 2)
     }
-    
-    func testAddFail() {
+
+    @Test func addFail() {
         let one = Scalar(1)
         let negate = Scalar(1)
         C.negate(into: negate)
-        XCTAssertThrowsError(try C.add(into: one, scalar: negate))
+        #expect(throws: (any Error).self) {
+            try C.add(into: one, scalar: negate)
+        }
     }
-    
-    func testMul() {
+
+    @Test func mul() throws {
         let result = Scalar(2)
         let alsoTwo = Scalar(2)
-        XCTAssertNoThrow(try C.mul(into: result, scalar: alsoTwo))
-        let four = Scalar(4)
-        XCTAssertEqual(result, four)
+        try C.mul(into: result, scalar: alsoTwo)
+        #expect(result == Scalar(4))
     }
-    
-    func testMulFail() {
+
+    @Test func mulFail() {
         let one = Scalar(1)
-        let zero = self.scalarZero!
-        XCTAssertThrowsError(try C.mul(into: one, scalar: zero))
+        let zero = self.scalarZero
+        #expect(throws: (any Error).self) {
+            try C.mul(into: one, scalar: zero)
+        }
     }
-    
+
     // MARK: Point
-    func testCreatePoint() {
-        var result: [UInt8]!
-        XCTAssertNoThrow(result = try C.point(from: Scalar(1)))
-        XCTAssertNotNil(result)
+    @Test func createPoint() throws {
+        let result = try C.point(from: Scalar(1))
+        #expect(result.count == C.POINT_SIZE)
     }
-    
-    func testComparePointsEquals() {
+
+    @Test func comparePointsEquals() {
         let a = Point(4)
         let b = Point(4)
-        XCTAssert(C.comparePoints(a._data, b._data).equals)
+        #expect(C.comparePoints(a._data, b._data).equals)
     }
-    
-    func testComparePointsLessThan() {
+
+    @Test func comparePointsLessThan() {
         let a = Point(2)
         let b = Point(4)
-        XCTAssertEqual(C.comparePoints(a._data, b._data), .lessThan)
+        #expect(C.comparePoints(a._data, b._data) == .lessThan)
     }
-    
-    func testComparePointsGreaterThan() {
+
+    @Test func comparePointsGreaterThan() {
         let a = Point(4)
         let b = Point(2)
-        XCTAssertEqual(C.comparePoints(a._data, b._data), .greaterThan)
+        #expect(C.comparePoints(a._data, b._data) == .greaterThan)
     }
-    
-    func testNegatePoint() {
+
+    @Test func negatePoint() throws {
         let point = Point(5)._data
         var negated = point
         C.negate(into: &negated)
-        XCTAssertNotEqual(point, negated)
+        #expect(point != negated)
         let scalar = Scalar(5)
         C.negate(into: scalar)
-        var point2: [UInt8]!
-        XCTAssertNoThrow(point2 = try C.point(from: scalar))
-        XCTAssertNotNil(point2)
-        guard let point2 else { return }
-        XCTAssertEqual(negated, point2)
+        let point2 = try C.point(from: scalar)
+        #expect(negated == point2)
     }
-    
-    func testAddPoint() {
+
+    @Test func addPoint() throws {
         var one = Point(1)._data
         let scalarOne = Scalar(1)
-        XCTAssertNoThrow(try C.add(into: &one, scalar: scalarOne))
-        XCTAssertEqual(one, Point(2)._data)
+        try C.add(into: &one, scalar: scalarOne)
+        #expect(one == Point(2)._data)
     }
-    
-    func testMulPoint() {
+
+    @Test func mulPoint() throws {
         var result = Point(2)._data
         let scalarTwo = Scalar(2)
-        XCTAssertNoThrow(try C.mul(into: &result, scalar: scalarTwo))
-        XCTAssertEqual(result, Point(4)._data)
+        try C.mul(into: &result, scalar: scalarTwo)
+        #expect(result == Point(4)._data)
     }
-    
-    func testCombinePoint() {
-        var result: [UInt8]!
-        let ones = (0..<10).map { _ in
-            try! C.point(from: Scalar(1))
-        }
-        XCTAssertNoThrow(result = try C.combine(points: ones))
-        XCTAssertNotNil(result)
-        
-        let ten = try! C.point(from: Scalar(10))
-        let comp = C.comparePoints(result, ten)
-        XCTAssert(comp.equals)
+
+    @Test func combinePoint() throws {
+        let ones = (0..<10).map { _ in try! C.point(from: Scalar(1)) }
+        let result = try C.combine(points: ones)
+        let ten = try C.point(from: Scalar(10))
+        #expect(C.comparePoints(result, ten).equals)
     }
-    
-    func testSerializeDeserialize() {
+
+    @Test func serializeDeserialize() throws {
         let h = Point(100)._data
         let compressed = C.compressed(point: h)
         let uncompressed = C.uncompressed(point: h)
-        XCTAssertEqual(compressed.count, 33)
-        XCTAssertEqual(uncompressed.count, 65)
-        
-        var result: [UInt8]!
-        XCTAssertNoThrow(result = try C.deSerialize(point: compressed))
-        XCTAssertEqual(result, h)
-        XCTAssertNoThrow(result = try C.deSerialize(point: uncompressed))
-        XCTAssertEqual(result, h)
+        #expect(compressed.count == 33)
+        #expect(uncompressed.count == 65)
+
+        #expect(try C.deSerialize(point: compressed) == h)
+        #expect(try C.deSerialize(point: uncompressed) == h)
     }
-    
+
     // MARK: DSA Signature
-    func testDSASign() {
+    @Test func dsaSign() throws {
         let secret = Scalar(20)
-        let pubkey = try! C.point(from: secret)
+        let pubkey = try C.point(from: secret)
         let message = (1...32).map(UInt8.init)
         let nonce = (1...32).map { _ in UInt8(1) }
-        var signature: [UInt8]!
-        var signatureNonce: [UInt8]!
-        XCTAssertNoThrow(signature = try C.dsaSign(scalar: secret, message: message, nonce: nil))
-        XCTAssertNoThrow(signatureNonce = try C.dsaSign(scalar: secret, message: message, nonce: nonce))
-        XCTAssertNotEqual(signature, signatureNonce)
-        
-        XCTAssert(
-            C.verify(dsa: signature, point: pubkey, message: message)
-        )
-        XCTAssert(
-            C.verify(dsa: signatureNonce, point: pubkey, message: message)
-        )
+        let signature = try C.dsaSign(scalar: secret, message: message, nonce: nil)
+        let signatureNonce = try C.dsaSign(scalar: secret, message: message, nonce: nonce)
+        #expect(signature != signatureNonce)
+
+        #expect(C.verify(dsa: signature, point: pubkey, message: message))
+        #expect(C.verify(dsa: signatureNonce, point: pubkey, message: message))
     }
-    
+
     // MARK: Extrakeys
-    func testSerializeDeserializeXPoint() {
+    @Test func serializeDeserializeXPoint() throws {
         let point = Point(100)._data
         let (_, xPoint) = C.xPoint(from: point)
         let serialized = C.serialize(xPoint: xPoint)
-        XCTAssertEqual(serialized.count, 32)
-        
-        var result: [UInt8]!
-        XCTAssertNoThrow(result = try C.deSerialize(xPoint: serialized))
-        XCTAssertNotNil(result)
-        XCTAssert(C.compareXPoints(xPoint, result).equals)
+        #expect(serialized.count == 32)
+
+        let result = try C.deSerialize(xPoint: serialized)
+        #expect(C.compareXPoints(xPoint, result).equals)
     }
-    
-    func testCompareXPointEquals() {
+
+    @Test func compareXPointEquals() {
         let (_, a) = C.xPoint(from: Point(200)._data)
         let (_, b) = C.xPoint(from: Point(200)._data)
-        XCTAssert(C.compareXPoints(a, b).equals)
+        #expect(C.compareXPoints(a, b).equals)
     }
-    
-    func testCompareXPointLessThan() {
+
+    @Test func compareXPointLessThan() {
         let (_, a) = C.xPoint(from: Point(2)._data)
         let (_, b) = C.xPoint(from: Point(4)._data)
-        XCTAssertEqual(C.compareXPoints(a, b), .lessThan)
+        #expect(C.compareXPoints(a, b) == .lessThan)
     }
-    
-    func testCompareXPointGreaterThan() {
+
+    @Test func compareXPointGreaterThan() {
         let (_, a) = C.xPoint(from: Point(4)._data)
         let (_, b) = C.xPoint(from: Point(2)._data)
-        XCTAssertEqual(C.compareXPoints(a, b), .greaterThan)
+        #expect(C.compareXPoints(a, b) == .greaterThan)
     }
-    
-    func testXPointFromPoint() {
+
+    @Test func xPointFromPoint() throws {
         let scalar = Scalar(10)
-        let point = try! C.point(from: scalar)
+        let point = try C.point(from: scalar)
         let (parity, xPoint) = C.xPoint(from: point)
         let negate = scalar
         C.negate(into: negate)
-        let (parityNegated, xPointNegated) = try! C.xPoint(from: C.point(from: negate))
-        XCTAssertNotEqual(parity, parityNegated)
-        XCTAssertEqual(xPoint, xPointNegated)
+        let (parityNegated, xPointNegated) = try C.xPoint(from: C.point(from: negate))
+        #expect(parity != parityNegated)
+        #expect(xPoint == xPointNegated)
     }
-    
-    func testCreateKeypair() {
+
+    @Test func createKeypair() throws {
         let scalar = Scalar(30)
-        var keypair: KeyPair!
-        XCTAssertNoThrow(keypair = try C.keypair(from: scalar))
-        XCTAssertNotNil(keypair)
-        guard let keypair
-        else { return }
-        
+        let keypair = try C.keypair(from: scalar)
         let backToScalar = C.scalar(from: keypair)
-        XCTAssertEqual(scalar, backToScalar)
+        #expect(scalar == backToScalar)
     }
-    
-    func testPointFromKeypair() {
+
+    @Test func pointFromKeypair() throws {
         let scalar = Scalar(40)
-        var keypair: KeyPair!
-        XCTAssertNoThrow(keypair = try C.keypair(from: scalar))
-        XCTAssertNotNil(keypair)
-        guard let keypair
-        else { return }
-        
+        let keypair = try C.keypair(from: scalar)
         let point = C.point(from: keypair)
-        XCTAssert(C.comparePoints(point, Point(40)._data).equals)
+        #expect(C.comparePoints(point, Point(40)._data).equals)
     }
-    
-    func testAddXTweakCheckXTweak() {
-        guard let keypair = try? C.keypair(from: Scalar(6)) // odd
-        else { XCTFail(); return }
-        XCTAssertNoThrow(try C.addXTweak(into: keypair, scalar: Scalar(1)))
+
+    @Test func addXTweakCheckXTweak() throws {
+        let keypair = try C.keypair(from: Scalar(6))  // odd
+        try C.addXTweak(into: keypair, scalar: Scalar(1))
         let point = C.point(from: keypair)
-        XCTAssertNotEqual(point, Point(7)._data)
-        
-        guard let keypair2 = try? C.keypair(from: Scalar(2)) // even
-        else { XCTFail(); return }
-        XCTAssertNoThrow(try C.addXTweak(into: keypair2, scalar: Scalar(1)))
+        #expect(point != Point(7)._data)
+
+        let keypair2 = try C.keypair(from: Scalar(2))  // even
+        try C.addXTweak(into: keypair2, scalar: Scalar(1))
         let point2 = C.point(from: keypair2)
-        XCTAssertEqual(point2, Point(3)._data)
+        #expect(point2 == Point(3)._data)
     }
-    
-    func testCheckXTweak() {
-        guard let keypair = try? C.keypair(from: Scalar(4))
-        else { XCTFail(); return }
+
+    @Test func checkXTweak() throws {
+        let keypair = try C.keypair(from: Scalar(4))
         let keypairXPoint = C.xPoint(from: keypair)
         let scalar = Scalar(2)
         let copy = keypair
-        XCTAssertNoThrow(try C.addXTweak(into: copy, scalar: scalar))
+        try C.addXTweak(into: copy, scalar: scalar)
         let xPoint = C.xPoint(from: copy)
         let ser = C.serialize(xPoint: xPoint.xPoint)
-        XCTAssert(xPoint.negated)
-        
+        #expect(xPoint.negated)
+
         scalar.withUnsafeBytes {
-            XCTAssert(C.checkAddXTweak(tweaked: ser,
-                                       negated: xPoint.negated,
-                                       xPoint: keypairXPoint.xPoint,
-                                       tweak: Array($0)))
+            #expect(
+                C.checkAddXTweak(
+                    tweaked: ser,
+                    negated: xPoint.negated,
+                    xPoint: keypairXPoint.xPoint,
+                    tweak: Array($0)))
         }
     }
-    
+
     // MARK: Schnorr Signature
-    func testSchnorrSign() {
+    @Test func schnorrSign() throws {
         let secret = Scalar(20)
-        let keypair = try! C.keypair(from: secret)
+        let keypair = try C.keypair(from: secret)
         let (_, xPoint) = C.xPoint(from: keypair)
         let message = (1...32).map(UInt8.init)
         let nonce = (1...32).map { _ in UInt8(1) }
-        var signature: [UInt8]!
-        var signatureNonce: [UInt8]!
-        XCTAssertNoThrow(signature = try C.schnorrSign(keypair: keypair,
-                                                       message: message,
-                                                       nonce: nil))
-        XCTAssertNoThrow(signatureNonce = try C.schnorrSign(keypair: keypair,
-                                                            message: message,
-                                                            nonce: nonce))
-        XCTAssertNotEqual(signature, signatureNonce)
-        
-        XCTAssert(
-            C.verify(schnorr: signature, xPoint: xPoint, message: message)
-        )
-        XCTAssert(
-            C.verify(schnorr: signatureNonce, xPoint: xPoint, message: message)
-        )
+        let signature = try C.schnorrSign(keypair: keypair, message: message, nonce: nil)
+        let signatureNonce = try C.schnorrSign(keypair: keypair, message: message, nonce: nonce)
+        #expect(signature != signatureNonce)
+
+        #expect(C.verify(schnorr: signature, xPoint: xPoint, message: message))
+        #expect(C.verify(schnorr: signatureNonce, xPoint: xPoint, message: message))
     }
-    
+
     // MARK: ECDH
-    func testEcdh() {
+    @Test func ecdh() throws {
         let scalarAlice = Scalar(100)
         let scalarBob = Scalar(200)
         let pointAlice = Point(100)._data
         let pointBob = Point(200)._data
-        
-        var secretAlice: EcdhSecret!
-        XCTAssertNoThrow(secretAlice = try C.ecdh(my: scalarAlice, their: pointBob))
-        XCTAssertNotNil(secretAlice)
-        var secretBob: EcdhSecret!
-        XCTAssertNoThrow(secretBob = try C.ecdh(my: scalarBob, their: pointAlice))
-        XCTAssertNotNil(secretBob)
-        guard let secretAlice, let secretBob
-        else { return }
-        
-        XCTAssertEqual(secretAlice, secretBob)
+
+        let secretAlice = try C.ecdh(my: scalarAlice, their: pointBob)
+        let secretBob = try C.ecdh(my: scalarBob, their: pointAlice)
+        #expect(secretAlice == secretBob)
     }
-    
-    func testEcdhFail() {
+
+    @Test func ecdhFail() throws {
         let scalarAlice = Scalar(101)
         let scalarBob = Scalar(200)
         let pointAlice = Point(100)._data
         let pointBob = Point(200)._data
-        
-        var secretAlice: EcdhSecret!
-        XCTAssertNoThrow(secretAlice = try C.ecdh(my: scalarAlice, their: pointBob))
-        XCTAssertNotNil(secretAlice)
-        var secretBob: EcdhSecret!
-        XCTAssertNoThrow(secretBob = try C.ecdh(my: scalarBob, their: pointAlice))
-        XCTAssertNotNil(secretBob)
-        guard let secretAlice, let secretBob
-        else { return }
-        
-        XCTAssertNotEqual(secretAlice, secretBob)
+
+        let secretAlice = try C.ecdh(my: scalarAlice, their: pointBob)
+        let secretBob = try C.ecdh(my: scalarBob, their: pointAlice)
+        #expect(secretAlice != secretBob)
     }
-    
-    func testEcdhFailIllegalScalar() {
+
+    @Test func ecdhFailIllegalScalar() throws {
         let scalarAlice: Scalar = self.scalarZero
         let scalarBob = Scalar(11)
-        let pointBob = try! C.point(from: scalarBob)
-        XCTAssertThrowsError(try C.ecdh(my: scalarAlice, their: pointBob))
+        let pointBob = try C.point(from: scalarBob)
+        #expect(throws: (any Error).self) {
+            try C.ecdh(my: scalarAlice, their: pointBob)
+        }
     }
-    
+
     // MARK: Recoverable
-    func testRecoverableSignRecoverPoint() {
+    @Test func recoverableSignRecoverPoint() throws {
         let secret = Scalar(120)
-        let pubkey = try! C.point(from: secret)
+        let pubkey = try C.point(from: secret)
         let message = (1...32).map(UInt8.init)
         let nonce = (1...32).map { _ in UInt8(1) }
-        var signature: [UInt8]!
-        XCTAssertNoThrow(signature = try C.recoverableSign(scalar: secret, message: message, nonce: nonce))
-        XCTAssertNotNil(signature)
-        guard let signature else { return }
-        var recoverPoint: [UInt8]!
-        XCTAssertNoThrow(recoverPoint = try C.recoverPoint(from: signature, message: message))
-        XCTAssertEqual(pubkey, recoverPoint)
+        let signature = try C.recoverableSign(scalar: secret, message: message, nonce: nonce)
+        let recoverPoint = try C.recoverPoint(from: signature, message: message)
+        #expect(pubkey == recoverPoint)
     }
-    
-    func testRecoverableSignVerify() {
+
+    @Test func recoverableSignVerify() throws {
         let secret = Scalar(120)
-        let pubkey = try! C.point(from: secret)
+        let pubkey = try C.point(from: secret)
         let message = (1...32).map(UInt8.init)
-        var signature: [UInt8]!
-        XCTAssertNoThrow(signature = try C.recoverableSign(scalar: secret, message: message, nonce: nil))
-        XCTAssertNotNil(signature)
-        guard let signature else { return }
+        let signature = try C.recoverableSign(scalar: secret, message: message, nonce: nil)
         let dsa: [UInt8] = C.convert(recoverable: signature)
-        XCTAssert(
-            C.verify(dsa: dsa, point: pubkey, message: message)
-        )
+        #expect(C.verify(dsa: dsa, point: pubkey, message: message))
     }
-    
-    func testRecoverableSerializeDeserialize() {
+
+    @Test func recoverableSerializeDeserialize() throws {
         let secret = Scalar(120)
         let message = (1...32).map(UInt8.init)
         let nonce = (1...32).map { _ in UInt8(1) }
-        var signature: [UInt8]!
-        XCTAssertNoThrow(signature = try C.recoverableSign(scalar: secret, message: message, nonce: nonce))
-        XCTAssertNotNil(signature)
-        guard let signature else { return }
+        let signature = try C.recoverableSign(scalar: secret, message: message, nonce: nonce)
         let serialized = C.serialize(recoverable: signature)
-        var deser: [UInt8]!
-        XCTAssertNoThrow(deser = try C.deSerialize(recoverable: serialized.data, id: serialized.id))
-        XCTAssertNotNil(deser)
-        guard let deser else { return }
-        XCTAssertEqual(signature, deser)
+        let deser = try C.deSerialize(recoverable: serialized.data, id: serialized.id)
+        #expect(signature == deser)
     }
-    
-    func testCustomScalarType() {
+
+    @Test func customScalarType() {
         struct TestScalar: SecretBytes {
             let buffer: Buffer
             init(_ buffer: Buffer) {
                 self.buffer = buffer
             }
         }
-        
+
         let validScalar = TestScalar(unsafeUninitializedCapacity: 32) { b, s in
             (UInt8(0)..<32).forEach { b[Int($0)] = $0 }
             s = 32
         }
-        XCTAssertNotNil(Scalar(validScalar))
-        
+        #expect(Scalar(validScalar) != nil)
+
         let invalidScalar = TestScalar(unsafeUninitializedCapacity: 32) { b, s in
             (UInt8(0)..<32).forEach { b[Int($0)] = 0 }
             s = 32
         }
-        XCTAssertNil(Scalar(invalidScalar))
-        
+        #expect(Scalar(invalidScalar) == nil)
+
         let shortScalar = TestScalar(unsafeUninitializedCapacity: 32) { b, s in
             (UInt8(0)..<32).forEach { b[Int($0)] = $0 }
             s = 31
         }
-        XCTAssertNil(Scalar(shortScalar))
+        #expect(Scalar(shortScalar) == nil)
     }
-    
-    func testCustomKeyPairType() {
+
+    @Test func customKeyPairType() throws {
         struct TestKeyPair: SecretBytes {
             let buffer: Buffer
             init(_ buffer: Buffer) {
                 self.buffer = buffer
             }
         }
-        
+
         let validScalar = Scalar(1000)
-        let validKeyPair = try! C.keypair(from: validScalar)
+        let validKeyPair = try C.keypair(from: validScalar)
         let kpBytes: [UInt8] = validKeyPair.withUnsafeBytes { Array($0) }
         let testKeyPair = TestKeyPair(unsafeUninitializedCapacity: C.KEYPAIR_SIZE) { b, s in
             (0..<C.KEYPAIR_SIZE).forEach { i in
@@ -446,26 +382,26 @@ class CoreTests: XCTestCase {
             }
             s = C.KEYPAIR_SIZE
         }
-        XCTAssertNotNil(KeyPair(testKeyPair))
-        
+        #expect(KeyPair(testKeyPair) != nil)
+
         let invalidKeyPair = TestKeyPair(unsafeUninitializedCapacity: C.KEYPAIR_SIZE) { b, s in
             (0..<C.KEYPAIR_SIZE).forEach { i in
                 b[i] = 0
             }
             s = C.KEYPAIR_SIZE
         }
-        XCTAssertNil(KeyPair(invalidKeyPair))
-        
+        #expect(KeyPair(invalidKeyPair) == nil)
+
         let shortKeyPair = TestKeyPair(unsafeUninitializedCapacity: C.KEYPAIR_SIZE) { b, s in
             (0..<C.KEYPAIR_SIZE).forEach { i in
                 b[i] = kpBytes[i]
             }
             s = C.KEYPAIR_SIZE - 1
         }
-        XCTAssertNil(KeyPair(shortKeyPair))
+        #expect(KeyPair(shortKeyPair) == nil)
     }
-    
-    func testCustomEcdhSecret() {
+
+    @Test func customEcdhSecret() {
         struct TestEcdhSecret: SecretBytes {
             let buffer: Buffer
             init(_ buffer: Buffer) {
@@ -478,14 +414,14 @@ class CoreTests: XCTestCase {
             }
             s = C.ECDH_SECRET_SIZE
         }
-        XCTAssertNotNil(EcdhSecret(validSecret))
-        
+        #expect(EcdhSecret(validSecret) != nil)
+
         let shortSecret = TestEcdhSecret(unsafeUninitializedCapacity: C.ECDH_SECRET_SIZE) { b, s in
             (0..<C.ECDH_SECRET_SIZE).forEach {
                 b[$0] = 0
             }
             s = C.ECDH_SECRET_SIZE - 1
         }
-        XCTAssertNil(EcdhSecret(shortSecret))
+        #expect(EcdhSecret(shortSecret) == nil)
     }
 }

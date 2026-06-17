@@ -2,7 +2,7 @@
 //
 // This source file is part of the fltrECC open source project
 //
-// Copyright (c) 2022 fltrWallet AG and the fltrECC project authors
+// Copyright (c) 2022-2026 fltrWallet AG and the fltrECC project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.md for license information
@@ -18,7 +18,9 @@ public protocol SecretBytes {
     func withUnsafeBytes<T>(_: (UnsafeRawBufferPointer) throws -> T) rethrows -> T
     init?(_: BufferType)
     init?<S: SecretBytes>(_: S) where S.BufferType == BufferType
-    init(unsafeUninitializedCapacity: Int, initializingWith: (inout UnsafeMutableRawBufferPointer, inout Int) throws -> Void) rethrows
+    init(
+        unsafeUninitializedCapacity: Int,
+        initializingWith: (inout UnsafeMutableRawBufferPointer, inout Int) throws -> Void) rethrows
 }
 
 internal protocol SecretMutableBytes: SecretBytes where BufferType: WritableBufferProtocol {
@@ -27,7 +29,9 @@ internal protocol SecretMutableBytes: SecretBytes where BufferType: WritableBuff
 
 extension SecretMutableBytes {
     @inlinable
-    public func withUnsafeMutableBytes<T>(_ body: (UnsafeMutableRawBufferPointer) throws -> T) rethrows -> T {
+    public func withUnsafeMutableBytes<T>(_ body: (UnsafeMutableRawBufferPointer) throws -> T)
+        rethrows -> T
+    {
         try self.buffer.withUnsafeMutableBytes(body)
     }
 }
@@ -37,7 +41,7 @@ public extension SecretBytes {
     var count: Int {
         self.buffer.count
     }
-    
+
     @inlinable
     func copy() -> Self {
         .init(unsafeUninitializedCapacity: self.count) { buffer, setSizeTo in
@@ -46,11 +50,11 @@ public extension SecretBytes {
                     buffer[i] = privateBytes[i]
                 }
             }
-            
+
             setSizeTo = self.count
         }
     }
-    
+
     @inlinable
     func withUnsafeBytes<T>(_ body: (UnsafeRawBufferPointer) throws -> T) rethrows -> T {
         try self.buffer.withUnsafeBytes(body)
@@ -60,10 +64,14 @@ public extension SecretBytes {
     init?<S: SecretBytes>(_ secretBytes: S) where S.BufferType == BufferType {
         self.init(secretBytes.buffer)
     }
-    
+
     @inlinable
-    init(unsafeUninitializedCapacity: Int, initializingWith callback: (inout UnsafeMutableRawBufferPointer, inout Int) throws -> Void) rethrows {
-        let buffer = try BufferType.create(capacity: unsafeUninitializedCapacity, initializingWith: callback)
+    init(
+        unsafeUninitializedCapacity: Int,
+        initializingWith callback: (inout UnsafeMutableRawBufferPointer, inout Int) throws -> Void
+    ) rethrows {
+        let buffer = try BufferType.create(
+            capacity: unsafeUninitializedCapacity, initializingWith: callback)
         self.init(buffer)!
     }
 }

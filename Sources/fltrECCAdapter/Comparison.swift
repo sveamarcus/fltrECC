@@ -2,7 +2,7 @@
 //
 // This source file is part of the fltrECC open source project
 //
-// Copyright (c) 2022 fltrWallet AG and the fltrECC project authors
+// Copyright (c) 2022-2026 fltrWallet AG and the fltrECC project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.md for license information
@@ -11,11 +11,11 @@
 //
 //===----------------------------------------------------------------------===//
 public extension C {
-    enum Comparison: String, Equatable, Hashable, Codable {
+    enum Comparison: String, Equatable, Hashable, Codable, Sendable {
         case lessThan
         case greaterThan
         case equals
-        
+
         @inlinable
         public var equals: Bool {
             switch self {
@@ -23,9 +23,9 @@ public extension C {
             case .lessThan, .greaterThan: return false
             }
         }
-        
+
         @inlinable
-        public static func ==(lhs: Self, rhs: Self) -> Bool {
+        public static func == (lhs: Self, rhs: Self) -> Bool {
             switch (lhs, rhs) {
             case (.lessThan, .lessThan): return true
             case (.greaterThan, .greaterThan): return true
@@ -35,7 +35,8 @@ public extension C {
                 (.greaterThan, .lessThan),
                 (.greaterThan, .equals),
                 (.equals, .lessThan),
-                (.equals, .greaterThan): return false
+                (.equals, .greaterThan):
+                return false
             }
         }
     }

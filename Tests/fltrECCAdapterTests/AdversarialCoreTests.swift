@@ -118,6 +118,12 @@ private let fieldSize = hexBytes("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
         #expect(scalar([UInt8](repeating: 1, count: 31)) == nil)
         #expect(scalar([UInt8](repeating: 1, count: 33)) == nil)
     }
+
+    @Test func randomAlwaysYieldsValidScalar() {
+        let s = Scalar.random()
+        #expect(s.count == C.SCALAR_SIZE)
+        #expect(C.scalarIsValid(scalar: s))
+    }
 }
 
 // MARK: - Parsing / deserialization fuzz

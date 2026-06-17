@@ -47,22 +47,11 @@ public struct Scalar: SecretBytes, SecretMutableBytes, Equatable {
 
     @inlinable
     public static func random() -> Scalar {
-        func randomScalar() -> Scalar {
-            .init(unsafeUninitializedCapacity: C.SCALAR_SIZE) { buffer, setSizeTo in
-                (0..<C.SCALAR_SIZE).forEach { i in
-                    buffer[i] = .random(in: .min ... .max)
-                }
-                setSizeTo = C.SCALAR_SIZE
-            }
+        while true {
+            let buffer = Buffer.create(random: C.SCALAR_SIZE)
+            let candidate = Scalar(_buffer: buffer)
+            if C.scalarIsValid(scalar: candidate) { return candidate }
         }
-
-        var random: Scalar!
-        repeat {
-            random = randomScalar()
-            assert(random.count == C.SCALAR_SIZE)
-        } while !C.scalarIsValid(scalar: random)
-
-        return random
     }
 
     @inlinable
